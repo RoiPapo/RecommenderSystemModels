@@ -4,8 +4,9 @@ import numpy as np
 import time
 
 
+
 def transform(ratings, min_items=5, min_users=7):
-    """
+    """BaselineRecommender
     Transforms ratings DataFrame
     :param ratings: Ratings DataFrame
     :param min_items: Minimum items per user

@@ -8,6 +8,7 @@ class Recommender(abc.ABC):
     def __init__(self, ratings: pd.DataFrame):
         self.initialize_predictor(ratings)
 
+
     @abc.abstractmethod
     def initialize_predictor(self, ratings: pd.DataFrame):
         raise NotImplementedError()
@@ -27,12 +28,21 @@ class Recommender(abc.ABC):
         :param true_ratings: DataFrame of the real ratings
         :return: RMSE score
         """
-        pass
+        RMSE = 0
+        for index, row in true_ratings.iterrows():
+            RMSE += (row['rating'] - self.predict(row['user'], row['item'], row['timestamp'])) ** 2
+        RMSE /= len(true_ratings.index)
+        return np.sqrt(RMSE)
 
 
 class BaselineRecommender(Recommender):
     def initialize_predictor(self, ratings: pd.DataFrame):
-        pass
+        self.all_movies_AVG = ratings["rating"].mean()
+        self.ratings_data = ratings.copy()
+        self.ratings_data['rating'] -= self.all_movies_AVG
+        self.user_means = self.ratings_data.groupby('user')['rating'].mean()
+        self.movie_means = self.ratings_data.groupby('item')['rating'].mean()
+        print("hi")
 
     def predict(self, user: int, item: int, timestamp: int) -> float:
         """
@@ -41,7 +51,12 @@ class BaselineRecommender(Recommender):
         :param timestamp: Rating timestamp
         :return: Predicted rating of the user for the item
         """
-        pass
+        predicted_rating = self.all_movies_AVG + self.user_means[user] + self.movie_means[item]
+        if predicted_rating < 0.5:
+            return 0.5
+        if predicted_rating > 5:
+            return 5
+        return predicted_rating
 
 
 class NeighborhoodRecommender(Recommender):
