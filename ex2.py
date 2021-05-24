@@ -2,12 +2,15 @@ import abc
 from typing import Tuple
 import pandas as pd
 import numpy as np
+import sklearn
+import datetime
+from datetime import datetime
+from sklearn import metrics
 
 
 class Recommender(abc.ABC):
     def __init__(self, ratings: pd.DataFrame):
         self.initialize_predictor(ratings)
-
 
     @abc.abstractmethod
     def initialize_predictor(self, ratings: pd.DataFrame):
@@ -42,7 +45,7 @@ class BaselineRecommender(Recommender):
         self.ratings_data['rating'] -= self.all_movies_AVG
         self.user_means = self.ratings_data.groupby('user')['rating'].mean()
         self.movie_means = self.ratings_data.groupby('item')['rating'].mean()
-        print("hi")
+        # print("hi")
 
     def predict(self, user: int, item: int, timestamp: int) -> float:
         """
@@ -61,7 +64,17 @@ class BaselineRecommender(Recommender):
 
 class NeighborhoodRecommender(Recommender):
     def initialize_predictor(self, ratings: pd.DataFrame):
-        pass
+        self.all_movies_AVG = ratings["rating"].mean()
+        self.ratings_data = ratings.copy()
+        self.ratings_data['rating'] = ratings['rating'] - self.all_movies_AVG
+        self.bu = self.ratings_data.pivot(index='user', columns='item', values='rating').to_numpy()
+        self.user_means2 = self.ratings_data.groupby('user')['rating'].mean()
+        self.movie_means2 = self.ratings_data.groupby('item')['rating'].mean()
+        self.NonZero_User_ratings = np.nan_to_num(self.bu)
+        self.correlation_matrix = metrics.pairwise.cosine_similarity(self.NonZero_User_ratings)
+        self.baseLine = BaselineRecommender(ratings)
+        self.bi = self.ratings_data.pivot(index='item', columns='user', values='rating').to_numpy()
+        self.bi_after_zeroes = np.nan_to_num(self.bi)
 
     def predict(self, user: int, item: int, timestamp: int) -> float:
         """
@@ -70,7 +83,34 @@ class NeighborhoodRecommender(Recommender):
         :param timestamp: Rating timestamp
         :return: Predicted rating of the user for the item
         """
-        pass
+        potential_users = [int(index) for index in range(len(self.bi_after_zeroes[int(item)])) if
+                           self.bi_after_zeroes[int(item)][int(index)] != 0 and int(index) != int(user)]
+        baseL_prediction = self.baseLine.predict(user, item, timestamp)
+        # closestNeighbors = list(np.absolute((self.user_means2 - self.user_means2[user])).sort_values().index[1:4])
+        relevent_row = np.absolute(self.correlation_matrix[int(user)])
+        relevent_indexes = (-relevent_row).argsort()
+        k = 2
+        closestNeighbors = []
+        for index in relevent_indexes:
+            if k < 0:
+                break
+            if index in potential_users:
+                closestNeighbors.append(index)
+                k = k - 1
+
+        numerator = 0
+        denum = 0
+        for neigbor in closestNeighbors:
+            if self.correlation_matrix[int(neigbor)][int(user)] != 0:
+                numerator += self.user_similarity(int(user), int(neigbor)) * self.bu[int(neigbor)][
+                    int(item)]
+                denum += abs(self.user_similarity(int(user), int(neigbor)))
+        predicted_rating = baseL_prediction + (numerator / denum)
+        if predicted_rating < 0.5:
+            return 0.5
+        if predicted_rating > 5:
+            return 5
+        return predicted_rating
 
     def user_similarity(self, user1: int, user2: int) -> float:
         """
@@ -78,12 +118,16 @@ class NeighborhoodRecommender(Recommender):
         :param user2: User identifier
         :return: The correlation of the two users (between -1 and 1)
         """
-        pass
+        return self.correlation_matrix[user1, user2]
 
 
 class LSRecommender(Recommender):
     def initialize_predictor(self, ratings: pd.DataFrame):
-        pass
+        self.all_movies_AVG = ratings["rating"].mean()
+        self.ratings_data = ratings.copy()
+        self.ratings_data['rating'] -= self.all_movies_AVG
+        self.user_means = self.ratings_data.groupby('user')['rating'].mean()
+        self.movie_means = self.ratings_data.groupby('item')['rating'].mean()
 
     def predict(self, user: int, item: int, timestamp: int) -> float:
         """
@@ -92,14 +136,55 @@ class LSRecommender(Recommender):
         :param timestamp: Rating timestamp
         :return: Predicted rating of the user for the item
         """
-        pass
+        num_of_users = len(self.user_means)
+        num_of_items = len(self.movie_means)
+        num_of_rows = self.ratings_data.shape[0]
+        times = self.timestamp_to_vector(timestamp)
+
+        if times[0] == 1:
+            times[0] = self.beta[int(num_of_items + num_of_users)]
+        if times[1] == 1:
+            times[1] = self.beta[int(num_of_items + num_of_users + 1)]
+        if times[2] == 1:
+            times[2] = self.beta[int(num_of_items + num_of_users + 2)]
+        predicted_rating = self.all_movies_AVG + self.beta[int(user)] + self.beta[int(num_of_users - 1 + item)] + sum(
+            times)
+
+        if predicted_rating < 0.5:
+            return 0.5
+        if predicted_rating > 5:
+            return 5
+        return predicted_rating
+
+    def timestamp_to_vector(self, timestamp):
+        times = np.zeros(3)
+        if 4 <= datetime.fromtimestamp(timestamp).weekday() <= 5:
+            times[2] = 1
+        if 6 <= datetime.fromtimestamp(timestamp).hour <= 18:
+            times[0] = 1
+        else:
+            times[1] = 1
+        return times
 
     def solve_ls(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Creates and solves the least squares regression
         :return: Tuple of X, b, y such that b is the solution to min ||Xb-y||
         """
-        pass
+        num_of_users = len(self.user_means)
+        num_of_items = len(self.movie_means)
+        num_of_rows = self.ratings_data.shape[0]
+
+        X = np.zeros((num_of_rows, num_of_users + num_of_items + 3))
+        for i, row in enumerate(self.ratings_data.iterrows()):
+            user = int(row[1]["user"])
+            movie = int(row[1]["item"])
+            X[i][user] = 1
+            X[i][num_of_users+movie-1] = 1
+            times = self.timestamp_to_vector(row[1]["timestamp"])
+            X[i, num_of_users + num_of_items: num_of_users + num_of_items + 3] = times
+        self.beta = np.linalg.lstsq(X, self.ratings_data['rating'], rcond=None)[0]
+        return X, self.beta, self.ratings_data['rating'].to_numpy()
 
 
 class CompetitionRecommender(Recommender):
