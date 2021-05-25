@@ -6,6 +6,7 @@ import sklearn
 import datetime
 from datetime import datetime
 from sklearn import metrics
+import math
 
 
 class Recommender(abc.ABC):
@@ -74,7 +75,7 @@ class NeighborhoodRecommender(Recommender):
         self.correlation_matrix = metrics.pairwise.cosine_similarity(self.NonZero_User_ratings)
         self.baseLine = BaselineRecommender(ratings)
         self.Ri = self.ratings_data.pivot(index='item', columns='user', values='rating').to_numpy()
-        self.bi_after_zeroes = np.nan_to_num(self.Ri)
+        self.Ri_after_zeroes = np.nan_to_num(self.Ri)
 
     def predict(self, user: int, item: int, timestamp: int) -> float:
         """
@@ -83,8 +84,8 @@ class NeighborhoodRecommender(Recommender):
         :param timestamp: Rating timestamp
         :return: Predicted rating of the user for the item
         """
-        potential_users = [int(index) for index in range(len(self.bi_after_zeroes[int(item)])) if
-                           self.bi_after_zeroes[int(item)][int(index)] != 0 and int(index) != int(user)]
+        potential_users = [int(index) for index in range(len(self.Ri_after_zeroes[int(item)])) if
+                           self.Ri_after_zeroes[int(item)][int(index)] != 0 and int(index) != int(user)]
         baseL_prediction = self.baseLine.predict(user, item, timestamp)
         # closestNeighbors = list(np.absolute((self.user_means2 - self.user_means2[user])).sort_values().index[1:4])
         relevent_row = np.absolute(self.correlation_matrix[int(user)])
@@ -180,7 +181,7 @@ class LSRecommender(Recommender):
             user = int(row[1]["user"])
             movie = int(row[1]["item"])
             X[i][user] = 1
-            X[i][num_of_users+movie-1] = 1
+            X[i][num_of_users + movie - 1] = 1
             times = self.timestamp_to_vector(row[1]["timestamp"])
             X[i, num_of_users + num_of_items: num_of_users + num_of_items + 3] = times
         self.beta = np.linalg.lstsq(X, self.ratings_data['rating'], rcond=None)[0]
@@ -189,7 +190,19 @@ class LSRecommender(Recommender):
 
 class CompetitionRecommender(Recommender):
     def initialize_predictor(self, ratings: pd.DataFrame):
-        pass
+        self.all_movies_AVG = ratings["rating"].mean()
+        self.ratings_data = ratings.copy()
+        self.baseLine = BaselineRecommender(self.ratings_data)
+        self.ls = LSRecommender(self.ratings_data)
+        x, beta, y = self.ls.solve_ls()
+        # self.baseLine.initialize_predictor(ratings)
+        self.Ru = self.ratings_data.pivot(index='user', columns='item', values='rating').to_numpy()
+        for i in range(self.Ru.shape[0]):
+            for j in range(self.Ru.shape[1]):
+                if not math.isnan(self.Ru[i][j]):
+                    self.Ru[i][j] = self.Ru[i][j] - self.ls.predict(i, j, 0)
+        self.NonZero_centered_User_ratings = np.nan_to_num(self.Ru).T
+        self.centered_corrn_matrix = metrics.pairwise.cosine_similarity(self.NonZero_centered_User_ratings)
 
     def predict(self, user: int, item: int, timestamp: int) -> float:
         """
@@ -198,4 +211,29 @@ class CompetitionRecommender(Recommender):
         :param timestamp: Rating timestamp
         :return: Predicted rating of the user for the item
         """
-        pass
+        predicted_rating = self.ls.predict(user, item, timestamp)
+        relevent_row = np.absolute(self.centered_corrn_matrix[int(item)])
+        relevent_indexes = (-relevent_row).argsort()
+        k = 30
+        closestNeighbors = []
+        for index in relevent_indexes:
+            if not math.isnan(self.Ru[int(user)][int(index)]) and index != item:
+                if k < 0:
+                    break
+                closestNeighbors.append(index)
+                k = k - 1
+
+        numerator = 0
+        denum = 0
+        for neigbor in closestNeighbors:
+            numerator += self.centered_corrn_matrix[int(item), int(neigbor)] * self.Ru[int(user)][
+                int(neigbor)]
+            denum += abs(self.centered_corrn_matrix[int(item), int(neigbor)])
+        predicted_rating += (numerator / denum)
+        if predicted_rating < 0.5:
+            return 0.5
+        if predicted_rating > 5:
+            return 5
+        return predicted_rating
+
+
