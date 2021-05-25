@@ -46,7 +46,6 @@ class BaselineRecommender(Recommender):
         self.ratings_data['rating'] -= self.all_movies_AVG
         self.user_means = self.ratings_data.groupby('user')['rating'].mean()
         self.movie_means = self.ratings_data.groupby('item')['rating'].mean()
-        # print("hi")
 
     def predict(self, user: int, item: int, timestamp: int) -> float:
         """
