@@ -46,19 +46,19 @@ def train_test_split(ratings, train_ratio=0.8):
 
 
 def main():
-    ratings = transform(pd.read_csv('ratings_comp.csv'))
+    ratings = transform(pd.read_csv('ratings.csv'))
     train, test = train_test_split(ratings)
     start = time.time()
 
-    # baseline_recommender = ex2.BaselineRecommender(train)
-    # print(baseline_recommender.rmse(test))
-    # neighborhood_recommender = ex2.NeighborhoodRecommender(train)
-    # print(neighborhood_recommender.rmse(test))
-    # ls_recommender = ex2.LSRecommender(train)
-    # ls_recommender.solve_ls()
-    # print(ls_recommender.rmse(test))
+    baseline_recommender = ex2.BaselineRecommender(train)
+    print(baseline_recommender.rmse(test))
+    neighborhood_recommender = ex2.NeighborhoodRecommender(train)
+    print(neighborhood_recommender.rmse(test))
+    ls_recommender = ex2.LSRecommender(train)
+    ls_recommender.solve_ls()
+    print(ls_recommender.rmse(test))
 
-    ratings_comp = pd.read_csv('ratings.csv')
+    ratings = transform(pd.read_csv('ratings_comp.csv'))
     train, test = train_test_split(ratings)
     comp_recommender = ex2.CompetitionRecommender(train)
     print(comp_recommender.rmse(test))
@@ -73,5 +73,4 @@ def main():
 
 if __name__ == '__main__':
     np.random.seed(0)
-    print('hi')
     main()

@@ -192,14 +192,14 @@ class CompetitionRecommender(Recommender):
         self.all_movies_AVG = ratings["rating"].mean()
         self.ratings_data = ratings.copy()
         self.baseLine = BaselineRecommender(self.ratings_data)
-        self.ls = LSRecommender(self.ratings_data)
-        x, beta, y = self.ls.solve_ls()
+        # self.ls = LSRecommender(self.ratings_data)
+        # x, beta, y = self.ls.solve_ls()
         # self.baseLine.initialize_predictor(ratings)
         self.Ru = self.ratings_data.pivot(index='user', columns='item', values='rating').to_numpy()
         for i in range(self.Ru.shape[0]):
             for j in range(self.Ru.shape[1]):
                 if not math.isnan(self.Ru[i][j]):
-                    self.Ru[i][j] = self.Ru[i][j] - self.ls.predict(i, j, 0)
+                    self.Ru[i][j] = self.Ru[i][j] - self.baseLine.predict(i, j, 0)
         self.NonZero_centered_User_ratings = np.nan_to_num(self.Ru).T
         self.centered_corrn_matrix = metrics.pairwise.cosine_similarity(self.NonZero_centered_User_ratings)
 
@@ -210,10 +210,10 @@ class CompetitionRecommender(Recommender):
         :param timestamp: Rating timestamp
         :return: Predicted rating of the user for the item
         """
-        predicted_rating = self.ls.predict(user, item, timestamp)
+        predicted_rating = self.baseLine.predict(user, item, timestamp)
         relevent_row = np.absolute(self.centered_corrn_matrix[int(item)])
         relevent_indexes = (-relevent_row).argsort()
-        k = 30
+        k = 22
         closestNeighbors = []
         for index in relevent_indexes:
             if not math.isnan(self.Ru[int(user)][int(index)]) and index != item:
