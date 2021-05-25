@@ -67,14 +67,14 @@ class NeighborhoodRecommender(Recommender):
         self.all_movies_AVG = ratings["rating"].mean()
         self.ratings_data = ratings.copy()
         self.ratings_data['rating'] = ratings['rating'] - self.all_movies_AVG
-        self.bu = self.ratings_data.pivot(index='user', columns='item', values='rating').to_numpy()
+        self.Ru = self.ratings_data.pivot(index='user', columns='item', values='rating').to_numpy()
         self.user_means2 = self.ratings_data.groupby('user')['rating'].mean()
         self.movie_means2 = self.ratings_data.groupby('item')['rating'].mean()
-        self.NonZero_User_ratings = np.nan_to_num(self.bu)
+        self.NonZero_User_ratings = np.nan_to_num(self.Ru)
         self.correlation_matrix = metrics.pairwise.cosine_similarity(self.NonZero_User_ratings)
         self.baseLine = BaselineRecommender(ratings)
-        self.bi = self.ratings_data.pivot(index='item', columns='user', values='rating').to_numpy()
-        self.bi_after_zeroes = np.nan_to_num(self.bi)
+        self.Ri = self.ratings_data.pivot(index='item', columns='user', values='rating').to_numpy()
+        self.bi_after_zeroes = np.nan_to_num(self.Ri)
 
     def predict(self, user: int, item: int, timestamp: int) -> float:
         """
@@ -102,7 +102,7 @@ class NeighborhoodRecommender(Recommender):
         denum = 0
         for neigbor in closestNeighbors:
             if self.correlation_matrix[int(neigbor)][int(user)] != 0:
-                numerator += self.user_similarity(int(user), int(neigbor)) * self.bu[int(neigbor)][
+                numerator += self.user_similarity(int(user), int(neigbor)) * self.Ru[int(neigbor)][
                     int(item)]
                 denum += abs(self.user_similarity(int(user), int(neigbor)))
         predicted_rating = baseL_prediction + (numerator / denum)
